@@ -1,0 +1,78 @@
+---
+import { type CollectionEntry, getCollection } from 'astro:content';
+import BlogPost from '../../layouts/BlogPost.astro';
+import { render } from 'astro:content';
+import Map from '../../components/Map.astro';
+
+export async function getStaticPaths() {
+	// 1. Sort posts by date so that Next/Prev links follow a timeline [cite: 5, 8]
+	const posts = (await getCollection('log')).sort(
+		(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+	);
+
+	// 2. Add 'index' here so it can be used to find neighbors 
+	return posts.map((post, index) => ({
+		params: { slug: post.id },
+		props: {
+			post,
+			// 3. Calculate neighbors safely 
+			prev: index === posts.length - 1 ? null : posts[index + 1],
+			next: index === 0 ? null : posts[index - 1]
+		},
+	}));
+}
+
+// 4. Update how props are received to include prev/next 
+const { post, prev, next } = Astro.props;
+const { Content } = await render(post);
+---
+
+<BlogPost {...post.data}>
+	<Map latitude={post.data.latitude} longitude={post.data.longitude} />
+	
+	<Content />
+
+	{post.data.tags && (
+  <div class="tags">
+    {post.data.tags.map((tag) => (
+      <a href={`/tags/${tag}`} class="tag">
+        {tag
+          .replace(/-/g, ' ')}
+      </a>
+    ))}
+  </div>
+)}
+
+	{/* 5. Add the navigation UI so you can click through the photos */}
+	<nav class="post-navigation">
+		{prev && <a href={`/log/${prev.id}`} class="nav-link">← Older</a>}
+		{next && <a href={`/log/${next.id}`} class="nav-link">Newer →</a>}
+	</nav>
+</BlogPost>
+
+<style>
+	.tags {
+		margin: 1rem 0;
+		display: flex;
+		gap: 0.5rem;
+	}
+	.tag {
+		padding: 0.2rem 0.5rem;
+		background: #eee;
+		border-radius: 4px;
+		text-decoration: none;
+		font-size: 0.9rem;
+		line-height: 120%;
+	}
+	.post-navigation {
+		display: flex;
+		justify-content: space-between;
+		margin-top: 3rem;
+		padding-top: 1rem;
+		border-top: 1px solid #ddd;
+	}
+	.nav-link {
+		text-decoration: none;
+		font-weight: bold;
+	}
+</style>

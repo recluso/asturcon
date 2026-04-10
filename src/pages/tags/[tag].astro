@@ -1,0 +1,61 @@
+---
+import { getCollection } from 'astro:content';
+import BlogPost from '../../layouts/BlogPost.astro';
+
+export async function getStaticPaths() {
+  const allPosts = await getCollection('log');
+  
+  // Use a fallback empty array [] to prevent '.flat()' from failing if a post has no tags
+  const uniqueTags = [...new Set(allPosts.map((post) => post.data.tags || []).flat())];
+
+  return uniqueTags.map((tag) => {
+    const filteredPosts = allPosts.filter((post) => post.data.tags?.includes(tag));
+    return {
+      params: { tag },
+      props: { posts: filteredPosts },
+    };
+  });
+}
+
+const { tag } = Astro.params;
+const { posts } = Astro.props;
+---
+
+<BlogPost 
+	title={`${tag}`} 
+	description={`All photos tagged with ${tag}`}
+	pubDate={new Date()} 
+>
+	
+	<ul class="gallery-list">
+		{posts.map((p) => (
+			<li>
+				<a href={`/log/${p.id}/`}>
+					<img src={p.data.thumbImage || p.data.heroImage} alt="" />
+					<span>{p.data.title}</span>
+				</a>
+			</li>
+		))}
+	</ul>
+</BlogPost>
+
+<style>
+	.gallery-list {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		gap: 2rem;
+		list-style: none;
+		padding: 0;
+	}
+	.gallery-list img {
+		border-radius: 8px;
+		width: 100%;
+		aspect-ratio: 1;
+		object-fit: cover;
+	}
+	.gallery-list a {
+		text-decoration: none;
+		text-align: center;
+		display: block;
+	}
+</style>

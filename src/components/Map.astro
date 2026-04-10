@@ -1,0 +1,104 @@
+---
+// src/components/Map.astro
+const { latitude, longitude, zoom = 0.01 } = Astro.props;
+
+// Re-added the marker coordinates for the pin
+const marker = `${latitude},${longitude}`;
+
+// Calculate the view box (bounding box)
+const bbox = `${longitude - zoom},${latitude - zoom},${longitude + zoom},${latitude + zoom}`;
+
+// Standard OpenStreetMap embed URL
+const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${marker}`;
+---
+
+{latitude && longitude && (
+  <div class="map-container" id="map-container">
+    {/* The Shield: This div sits on top to catch scroll events so the page doesn't zoom */}
+    <div class="map-shield" id="map-shield">
+      <span>Click to interact with map</span>
+    </div>
+    
+    <iframe 
+      width="100%" 
+      height="300" 
+      src={mapUrl}
+      style="border: 1px solid #ddd; border-radius: 12px;"
+      loading="lazy"
+    ></iframe>
+
+    <p style="text-align: right; font-size: 0.8rem; margin: 0.5rem 0 0 0;">
+      <a 
+        href={`https://www.google.com/maps?q=${latitude},${longitude}`} 
+        target="_blank" 
+        rel="noopener noreferrer"
+      >
+        📍 View on Google Maps
+      </a>
+    </p>
+  </div>
+)}
+
+<script>
+  // Browser-side logic to handle the interaction switch
+  const shield = document.getElementById('map-shield');
+  const container = document.getElementById('map-container');
+
+  if (shield && container) {
+    // 1. Hide shield on click so user can zoom/pan the iframe
+    shield.addEventListener('click', () => {
+      shield.style.display = 'none';
+    });
+
+    // 2. Reset shield when mouse leaves to 'lock' the map again for scrolling
+    container.addEventListener('mouseleave', () => {
+      shield.style.display = 'flex';
+    });
+  }
+</script>
+
+<style>
+  .map-container {
+    position: relative;
+    margin: 1rem 0 0;
+  }
+
+  .map-shield {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 300px; /* Must match iframe height */
+    z-index: 10;
+    background: rgba(0, 0, 0, 0); /* Invisible but catches clicks */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 12px;
+  }
+
+  .map-shield span {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 10px 20px;
+    border-radius: 25px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #111;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    border: 1px solid #ccc;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Only show the 'Click' hint when the user is actually hovering over the map */
+  .map-shield:hover span {
+    opacity: 0.8;
+  }
+
+  iframe {
+    display: block;
+    width: 100%;
+    /* Ensure the map doesn't capture focus accidentally */
+  }
+</style>

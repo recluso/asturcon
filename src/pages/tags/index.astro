@@ -1,0 +1,110 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BlogPost.astro';
+
+// 1. Fetch all posts from the 'log' collection [cite: 8, 19]
+const allPosts = (await getCollection('log')).sort(
+	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+);
+
+// 2. Extract unique tags [cite: 20]
+const tags = [...new Set(allPosts.map((post) => post.data.tags || []).flat())].sort();
+
+// 3. Create a map of tag data (count + representative thumbnail)
+const tagData = tags.map((tag) => {
+  const postsWithTag = allPosts.filter(post => post.data.tags?.includes(tag));
+  return {
+    name: tag,
+    count: postsWithTag.length,
+    // Pick the thumbImage from the most recent post in this category 
+    thumbnail: postsWithTag[0]?.data.thumbImage || postsWithTag[0]?.data.heroImage
+  };
+});
+---
+
+<BaseLayout 
+	title="Have a browse" 
+	description="Browse photos by tag"
+	pubDate={new Date()} 
+>
+	<section>
+		<div class="tags-grid">
+			{tagData.map((tag) => (
+				<a href={`/tags/${tag.name}/`} class="tag-card">
+					<div class="image-wrapper">
+						{tag.thumbnail && <img src={tag.thumbnail} alt="" loading="lazy" />}
+						<div class="tag-overlay">
+							<span class="tag-name">#{tag.name}</span>
+							<span class="tag-count">{tag.count} {tag.count === 1 ? 'photo' : 'photos'}</span>
+						</div>
+					</div>
+				</a>
+			))}
+		</div>
+	</section>
+</BaseLayout>
+
+<style>
+	.tags-grid {
+		display: grid;
+		/* Use 220px as the base width for the cards */
+		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		gap: 1rem;
+		margin-top: 2rem;
+	}
+
+	.tag-card {
+		text-decoration: none;
+		color: white;
+		transition: transform 0.4s ease;
+		max-width: 220px; /* Force the 220px width constraint */
+	}
+
+	/*.tag-card:hover {
+		transform: scale(1.05);
+	}*/
+
+	.image-wrapper {
+		position: relative;
+		width: 220px;   /* Fixed width */
+		height: 220px;  /* Square aspect ratio often looks better for small thumbs */
+		overflow: hidden;
+		border-radius: 8px;
+		background: #333;
+	}
+
+	.image-wrapper img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		opacity: 0.5;
+		transition: opacity 0.2s ease;
+	}
+
+	.tag-card:hover img {
+		opacity: 1.0;
+	}
+
+	.tag-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		
+	}
+
+	.tag-name {
+		font-weight: bold;
+		font-size: 1.1rem;
+		text-transform: capitalize;
+		text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+	}
+
+	.tag-count {
+		font-size: 0.75rem;
+		opacity: 0.9;
+		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+	}
+</style>

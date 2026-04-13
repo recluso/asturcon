@@ -5,129 +5,98 @@ import fs from 'fs';
 import exifr from 'exifr';
 
 const input = process.argv[2];
-const name = process.argv[3];
+const manualName = process.argv[3];
 
-if (!input || !name) {
-  console.error('Usage: node scripts/optimise-photo.mjs <input-file> <output-name>');
+if (!input) {
+  console.error('Usage: node scripts/optimise-photo.mjs <input-file> [optional-name]');
   process.exit(1);
 }
 
-if (!fs.existsSync('./optimised')) fs.mkdirSync('./optimised');
+function slugify(text) {
+  return text.toString().toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w-]+/g, '').replace(/--+/g, '-');
+}
 
-const output = `./optimised/${name}.webp`;
-const thumbOutput = `./optimised/${name}-thumb.webp`;
+function toTitleCase(str) {
+  return str.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
 
-// --- HELPER FUNCTION: Reverse Geocode Coordinates ---
+function getCleanTitle(meta, filename, ext) {
+  const raw = meta?.title || meta?.Title || meta?.ObjectName || meta?.Headline;
+  if (!raw) return filename.replace(ext, '');
+  if (typeof raw === 'object' && raw !== null) {
+    const val = raw.value || raw['x-default'] || Object.values(raw)[0];
+    if (typeof val === 'string' && val.toLowerCase() !== 'x-default') return val.trim();
+  }
+  if (typeof raw === 'string' && raw.toLowerCase() !== 'x-default') return raw.trim();
+  return filename.replace(ext, '');
+}
+
 async function getCountry(lat, lon) {
-  if (!lat || !lon || (lat === 0 && lon === 0)) return null;
+  if (!lat || !lon) return null;
   try {
-    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
-    const response = await fetch(url);
+    const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
     const data = await response.json();
     return data.countryName || null;
-  } catch (error) {
-    console.error("⚠️ Geocoding lookup failed:", error.message);
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
-let latitude = null;
-let longitude = null;
+async function run() {
+  const ext = path.extname(input);
+  const filename = path.basename(input);
 
-try {
-  const gps = await exifr.gps(input);
-  if (gps) {
-    latitude = gps.latitude;
-    longitude = gps.longitude;
-    console.log(`📍 Found GPS: ${latitude}, ${longitude}`);
-  }
-} catch (e) {
-  console.warn('⚠️ Could not extract GPS data.');
-}
+  const meta = await exifr.parse(input, { xmp: true, iptc: true, mergeOutput: true }).catch(() => ({}));
+  const gps = await exifr.gps(input).catch(() => null);
 
-// 1. Fetch the raw country name
-const rawCountry = await getCountry(latitude, longitude);
+  const displayTitle = manualName ? toTitleCase(manualName) : getCleanTitle(meta, filename, ext);
+  const slug = slugify(displayTitle);
 
-// 2. Create the Pretty Name (strips legal suffixes and (the) endings)
-// This turns "United Kingdom of Great Britain and Northern Ireland (the)" into "United Kingdom"
-const prettyCountry = rawCountry
-  ? rawCountry.split('(')[0].replace(/ of Great Britain.*/, '').trim()
-  : null;
+  // DATE LOGIC
+  const hasMetaDate = !!meta?.DateTimeOriginal;
+  const photoDate = hasMetaDate ? new Date(meta.DateTimeOriginal) : new Date();
+  const shotDateString = hasMetaDate
+    ? photoDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
 
-// Process the images
-await sharp(input)
-  .resize({ width: 2000, withoutEnlargement: true })
-  .webp({ quality: 85 })
-  .toFile(output);
+  const output = `./optimised/${slug}.webp`;
+  const thumbOutput = `./optimised/${slug}-thumb.webp`;
+  if (!fs.existsSync('./optimised')) fs.mkdirSync('./optimised');
 
-console.log(`✓ Optimised: ${output}`);
+  await sharp(input).resize(2000, null, { withoutEnlargement: true }).webp({ quality: 85 }).toFile(output);
+  await sharp(input).resize(720, null, { withoutEnlargement: true }).webp({ quality: 80 }).toFile(thumbOutput);
 
-await sharp(input)
-  .resize({ width: 720, withoutEnlargement: true })
-  .webp({ quality: 80 })
-  .toFile(thumbOutput);
+  execSync(`npx wrangler r2 object put photoblog-media/${slug}.webp --file ${output} --remote`, { stdio: 'inherit' });
+  execSync(`npx wrangler r2 object put photoblog-media/${slug}-thumb.webp --file ${thumbOutput} --remote`, { stdio: 'inherit' });
 
-console.log(`✓ Thumbnail: ${thumbOutput}`);
+  const country = await getCountry(gps?.latitude, gps?.longitude);
+  const blogDir = `./src/content/log/${photoDate.getFullYear()}/${String(photoDate.getMonth() + 1).padStart(2, '0')}`;
+  if (!fs.existsSync(blogDir)) fs.mkdirSync(blogDir, { recursive: true });
 
-// Upload to R2
-execSync(`npx wrangler r2 object put photoblog-media/${name}.webp --file ${output} --remote`, {
-  stdio: 'inherit'
-});
-execSync(`npx wrangler r2 object put photoblog-media/${name}-thumb.webp --file ${thumbOutput} --remote`, {
-  stdio: 'inherit'
-});
+  const description = shotDateString
+    ? `${shotDateString}: ${displayTitle}${country ? ` in ${country}` : ''}`
+    : `${displayTitle}${country ? ` in ${country}` : ''}`;
 
-// Prepare Metadata for Markdown
-const now = new Date();
-const year = now.getFullYear();
-const month = String(now.getMonth() + 1).padStart(2, '0');
-const pubDate = now.toISOString();
+  const tags = ["Everything"];
+  if (country) tags.push(country);
 
-const title = name
-  .split('-')
-  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-  .join(' ');
-
-// 3. Build the tags array using the Pretty Name
-const tags = ["Everything"];
-if (prettyCountry) {
-  // Formats "United Kingdom" to "united-kingdom"
-  const cleanTag = prettyCountry.toLowerCase().replace(/\s+/g, '-');
-  tags.push(cleanTag);
-}
-
-const friendlyDate = now.toLocaleDateString('en-GB', {
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric'
-});
-
-// 4. Match the description and file logic from watch-photos.mjs
-const description = `${friendlyDate} ${title}${prettyCountry ? ` in ${prettyCountry}` : ''}`;
-const blogDir = `./src/content/log/${year}/${month}`;
-const blogFile = `${blogDir}/${name}.md`;
-
-if (!fs.existsSync(blogDir)) fs.mkdirSync(blogDir, { recursive: true });
-
-// 5. Generate the final Markdown content
-const markdown = `---
-title: "${title}"
+  const markdown = `---
+title: "${displayTitle}"
 description: "${description}"
-pubDate: "${pubDate}"
-heroImage: "https://media.asturcon.red/${name}.webp"
-thumbImage: "https://media.asturcon.red/${name}-thumb.webp"
-latitude: ${latitude || 'null'}
-longitude: ${longitude || 'null'}
-country: "${prettyCountry || 'Unknown'}"
+pubDate: "${photoDate.toISOString()}"
+heroImage: "https://media.asturcon.red/${slug}.webp"
+thumbImage: "https://media.asturcon.red/${slug}-thumb.webp"
+country: "${country || 'Unknown'}"
+latitude: ${gps?.latitude || 'null'}
+longitude: ${gps?.longitude || 'null'}
 tags: ${JSON.stringify(tags)}
 ---
 
-${prettyCountry ? `<p>🌍 <small><em>Location: ${prettyCountry}</em></small></p>` : ''}
+Xerum, quo qui aut unt expliquam qui dolut labo. Aque venitatiusda cum, voluptionse latur sitiae dolessi aut parist aut dollo enim qui voluptate ma dolestendit peritin re plis aut quas inctum laceat est volestemque commosa as cus endigna tectur?
 
-Xerum, quo qui aut unt expliquam qui dolut labo. Aque venitatiusda cum, voluptionse latur sitiae dolessi aut parist aut dollo enim qui voluptate ma dolestendit peritin re plis aut quas inctum laceat est volestemque commosa as cus endigna tectur? 
+<small>${ shotDateString ? `**Shot on:** ${shotDateString}&nbsp;&nbsp;&nbsp;&nbsp;` : ''}${country ? `**Location:** ${country}` : ''}</small>
 `;
 
-fs.writeFileSync(blogFile, markdown);
+  fs.writeFileSync(`${blogDir}/${slug}.md`, markdown);
+  console.log(`✅ Saved: ${slug}.md`);
+}
 
-console.log(`✓ Created blog post: ${blogFile}`);
-console.log(`✓ URL will be: /log/${year}/${month}/${name}`);
+run();

@@ -1,5 +1,9 @@
 
-node scripts/watch-photos.mjs
+`node scripts/watch-photos.mjs`
+
+`killall node`
+
+`npm run dev`
 
 # Astro Starter Kit: Blog
 

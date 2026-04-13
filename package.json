@@ -36,7 +36,8 @@
 		"check": "astro build && tsc && wrangler deploy --dry-run",
 		"deploy": "wrangler deploy",
 		"dev": "astro dev",
-		"preview": "astro build && wrangler dev"
+		"preview": "astro build && wrangler dev",
+		"watch-photos": "node scripts/watch-photos.mjs"
 	},
 	"type": "module"
 }

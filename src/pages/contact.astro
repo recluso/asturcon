@@ -9,11 +9,22 @@ let error = false;
 if (Astro.request.method === "POST") {
   try {
     const data = await Astro.request.formData();
+    
+    // --- SPAM PROTECTION: Honeypot Check ---
+    const honeypot = data.get("website");
+    if (honeypot) {
+      console.log("Spam submission detected and blocked.");
+      // We set success to true so the bot thinks it won, 
+      // but we return early so no email is sent.
+      success = true; 
+      return;
+    }
+    // ---------------------------------------
+
     const name = data.get("name");
     const email = data.get("email");
     const message = data.get("message");
 
-    // Keep the robust key detection 
     const apiKey = import.meta.env.RESEND_API_KEY || Astro.locals.runtime?.env?.RESEND_API_KEY;
     
     if (!apiKey) {
@@ -28,7 +39,6 @@ if (Astro.request.method === "POST") {
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        // Change this to your verified domain email now!
         from: "Sacha Asturcon <contact@asturcon.red>",
         to: ["recluso@icloud.com"], 
         reply_to: email as string,
@@ -47,9 +57,7 @@ if (Astro.request.method === "POST") {
       throw new Error("API Rejection");
     }
   } catch (e) {
-    // We log the real error for you to see in the terminal/Cloudflare logs
     console.error("Contact Form Submission Failure:", e);
-    // But we only show the user a polite generic error
     error = true;
   }
 }
@@ -58,7 +66,6 @@ if (Astro.request.method === "POST") {
 <BlogPost title="Contact" description="Get in touch" pubDate={new Date()}>
   <div class="contact-form-container">
     
-
     {success ? (
       <div class="message success">
         <p>✅ Message sent! I'll get back to you soon.</p>
@@ -72,6 +79,12 @@ if (Astro.request.method === "POST") {
         )}
 
         <form method="POST">
+          {/* Honeypot field - Hidden from humans, trap for bots */}
+          <div class="ohnohoney">
+            <label for="website">Website</label>
+            <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" />
+          </div>
+
           <div class="input-group">
             <label for="name">Name</label>
             <input type="text" id="name" name="name" required />
@@ -100,6 +113,18 @@ if (Astro.request.method === "POST") {
     margin: 0 auto;
     padding: 2rem 1rem;
   }
+
+  /* Visually hide the honeypot field */
+  .ohnohoney {
+    opacity: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 0;
+    width: 0;
+    z-index: -1;
+  }
+
   .input-group {
     margin-bottom: 1.5rem;
     display: flex;
@@ -138,5 +163,4 @@ if (Astro.request.method === "POST") {
   }
   .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
   .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-  .success a { color: #155724; font-weight: bold; }
 </style>

@@ -5,11 +5,20 @@ import BlogPost from '../../layouts/BlogPost.astro';
 export async function getStaticPaths() {
   const allPosts = await getCollection('log');
   
-  // Use a fallback empty array [] to prevent '.flat()' from failing if a post has no tags
+  // Get unique tags
   const uniqueTags = [...new Set(allPosts.map((post) => post.data.tags || []).flat())];
 
   return uniqueTags.map((tag) => {
+    // 1. Filter posts that have the current tag
     const filteredPosts = allPosts.filter((post) => post.data.tags?.includes(tag));
+
+    // 2. Sort the filtered posts from Newest to Oldest
+    filteredPosts.sort((a, b) => {
+      const dateA = new Date(a.data.pubDate);
+      const dateB = new Date(b.data.pubDate);
+      return dateB.valueOf() - dateA.valueOf();
+    });
+
     return {
       params: { tag },
       props: { posts: filteredPosts },

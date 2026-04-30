@@ -90,7 +90,6 @@ longitude: ${gps?.longitude || 'null'}
 tags: ${JSON.stringify(tags)}
 ---
 
-Xerum, quo qui aut unt expliquam qui dolut labo. Aque venitatiusda cum, voluptionse latur sitiae dolessi aut parist aut dollo enim qui voluptate ma dolestendit peritin re plis aut quas inctum laceat est volestemque commosa as cus endigna tectur?
 
 <small>${ shotDateString ? `**Shot on:** ${shotDateString}&nbsp;&nbsp;&nbsp;&nbsp;` : ''}${country ? `**Location:** ${country}` : ''}</small>
 `;
